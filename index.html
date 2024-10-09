@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Interface</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        .chat-container {
+            scrollbar-width: thin;
+            scrollbar-color: #CBD5E0 #EDF2F7;
+        }
+        
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .chat-container::-webkit-scrollbar-track {
+            background: #EDF2F7;
+        }
+        
+        .chat-container::-webkit-scrollbar-thumb {
+            background-color: #CBD5E0;
+            border-radius: 4px;
+        }
+
+        .message-transition {
+            transition: all 0.3s ease-in-out;
+            opacity: 1;
+        }
+
+        .message-enter {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .gradient-bg {
+            background: linear-gradient(-45deg, #667eea, #764ba2, #6B8DD6, #8E37D7);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <!-- Header -->
+            <div class="gradient-bg p-6">
+                <h1 class="text-2xl font-bold text-white">AI Chat Interface</h1>
+                <div class="flex space-x-2 mt-4">
+                    <button id="startNewConversation" class="bg-white bg-opacity-20 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-opacity-30 transition-colors duration-200">
+                        Start New Chat
+                    </button>
+                    <button id="clearChat" class="bg-white bg-opacity-20 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-opacity-30 transition-colors duration-200">
+                        Clear Chat
+                    </button>
+                </div>
+                <div class="mt-3 text-white text-opacity-90 text-sm">
+                    <span class="inline-flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Conversation memory is enabled by default
+                    </span>
+                </div>
+            </div>
+
+            <!-- Chat Container -->
+            <div id="conversation" class="chat-container h-96 overflow-y-auto p-6 bg-gray-50">
+                <!-- Messages will be inserted here -->
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-4 bg-white border-t border-gray-200">
+                <div class="flex space-x-4">
+                    <textarea
+                        id="userInput"
+                        class="flex-1 border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                        placeholder="Type your message here... (Press Enter to send)"
+                        rows="3"
+                    ></textarea>
+                    <button
+                        id="sendButton"
+                        class="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors duration-200 self-end"
+                    >
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let conversationHistory = [];
+        let model = "llama3.2";
+        let isContinuing = true; // Set to true by default
+
+        document.getElementById('sendButton').addEventListener('click', sendPrompt);
+        document.getElementById('startNewConversation').addEventListener('click', startNewConversation);
+        document.getElementById('clearChat').addEventListener('click', clearChat);
+
+        // Add enter key support
+        document.getElementById('userInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendPrompt();
+            }
+        });
+
+        async function sendPrompt() {
+            const userInput = document.getElementById('userInput').value.trim();
+            if (!userInput) return;
+
+            appendMessage(userInput, 'user');
+
+            // Always include conversation history in the prompt
+            let prompt = conversationHistory.map(entry => `User: ${entry.user} API: ${entry.bot}`).join(' ') + ` User: ${userInput}`;
+
+            const payload = {
+                model: model,
+                prompt: prompt,
+                stream: false,
+            };
+
+            try {
+                const response = await fetch('http://localhost:8080/https://3af6-173-239-194-251.ngrok-free.app/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                const data = await response.json();
+                appendMessage(formatMarkdown(data.response), 'bot');
+                conversationHistory.push({ user: userInput, bot: data.response });
+                
+            } catch (error) {
+                console.error('Error:', error);
+                appendMessage('Error occurred while communicating with the API.', 'bot');
+            }
+
+            document.getElementById('userInput').value = '';
+        }
+
+        function appendMessage(message, sender) {
+            const conversationDiv = document.getElementById('conversation');
+            const messageDiv = document.createElement('div');
+            
+            messageDiv.className = `message-transition message-enter mb-4 ${
+                sender === 'user' 
+                    ? 'ml-auto max-w-3/4' 
+                    : 'mr-auto max-w-3/4'
+            }`;
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = `rounded-lg p-3 ${
+                sender === 'user'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-200'
+            }`;
+            bubbleDiv.innerHTML = message;
+            
+            messageDiv.appendChild(bubbleDiv);
+            conversationDiv.appendChild(messageDiv);
+            
+            // Trigger animation
+            setTimeout(() => messageDiv.classList.remove('message-enter'), 10);
+            
+            conversationDiv.scrollTop = conversationDiv.scrollHeight;
+        }
+
+        function startNewConversation() {
+            conversationHistory = [];
+            document.getElementById('conversation').innerHTML = '';
+            appendMessage('Starting a new conversation. How can I help you today?', 'bot');
+            isContinuing = true; // Keep conversation memory enabled
+        }
+
+        function clearChat() {
+            conversationHistory = [];
+            document.getElementById('conversation').innerHTML = '';
+            appendMessage('Chat cleared. How can I help you?', 'bot');
+            isContinuing = true; // Keep conversation memory enabled
+        }
+
+        function formatMarkdown(text) {
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold">$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em class="italic">$1</em>')
+                .replace(/```(.*?)```/gs, '<pre class="bg-gray-100 p-3 rounded-lg my-2 overflow-x-auto">$1</pre>')
+                .replace(/`(.*?)`/g, '<code class="bg-gray-100 px-1 rounded">$1</code>')
+                .replace(/\n/g, '<br>');
+        }
+
+        // Start with a welcome message
+        window.addEventListener('load', () => {
+            appendMessage('Welcome! How can I assist you today?', 'bot');
+        });
+    </script>
+</body>
+</html>
